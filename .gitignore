@@ -1,0 +1,31 @@
+# Data files
+data/*.gpkg
+data/*.png
+data/*.jpg
+data/*.tif
+
+# Jupyter Notebook checkpoints
+.ipynb_checkpoints/
+*/.ipynb_checkpoints/*
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtual environments
+venv/
+env/
+ENV/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Keep JSON configuration files
+!data/*.json
