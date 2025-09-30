@@ -17,11 +17,11 @@ ee.Initialize()
 ```
 
 ### External Data Source
-The project requires access to:
-- **DANE municipality layer**: `/home/famartinezal/Dropbox/Base/DANE_BASE_2023.gpkg`
-  - Layer: `MGN_MPIO_POLITICO`
-  - CRS: MAGNA-SIRGAS (EPSG:4686)
-  - This path is hardcoded in notebook 01
+The project uses Earth Engine assets directly:
+- **Municipality FeatureCollection**: `users/geoia/MapasBase/ColMuni`
+  - Contains all Colombian municipalities
+  - Properties: DPTO_CCDGO, DPTO_CNMBR, MPIO_CCDGO, MPIO_CNMBR, MPIO_NAREA
+  - No local GPKG file needed - all data accessed through Earth Engine API
 
 ## Workflow Architecture
 
@@ -35,14 +35,14 @@ The notebooks MUST be executed in order as each depends on outputs from the prev
 
 ### Key Data Flow
 ```
-DANE GPKG → Notebook 01 → data/municipios_seleccionados.gpkg
-                        → data/parametros.json
+EE Asset (users/geoia/MapasBase/ColMuni) → Notebook 01 → data/parametros.json
+                                                       (includes ee_asset and codigos_municipios)
 
 parametros.json → Notebook 02 → data/procesamiento_info.json
-municipios.gpkg              → Sentinel-1 collection (recreated in memory)
+EE municipios                → Sentinel-1 collection (recreated in memory)
 
-All previous JSONs → Notebook 03 → data/change_analysis_params.json
-                                 → data/estadisticas_cambio_municipios.csv
+parametros.json → Notebook 03 → data/change_analysis_params.json
+EE municipios                → data/estadisticas_cambio_municipios.csv
 
 All previous files → Notebook 04 → Final visualizations & reports
 ```
@@ -52,11 +52,17 @@ All previous files → Notebook 04 → Final visualizations & reports
 
 ## Municipality Selection
 
-The project analyzes exactly 9 municipalities with specific DANE codes:
-- **Meta**: Puerto López (50-573), Castilla La Nueva (50-150), San Carlos DE Guaroa (50-680), Cabuyaro (50-124)
-- **Casanare**: Tauramena (85-410), Yopal (85-001), Aguazul (85-010), Nunchía (85-225), Villanueva (85-440)
+The project analyzes exactly 9 municipalities using MPIO_CCDGO codes from Earth Engine:
+- **Meta**: Puerto López (50573), Castilla La Nueva (50150), San Carlos DE Guaroa (50680), Cabuyaro (50124)
+- **Casanare**: Tauramena (85410), Yopal (85001), Aguazul (85010), Nunchía (85225), Villanueva (85440)
 
-Note: Municipality names in DANE layer use exact spelling including "SAN CARLOS DE GUAROA" (not "GUAROA" alone).
+**Implementation**:
+```python
+codigos_municipios = ['50573', '50150', '50680', '50124', '85410', '85001', '85010', '85225', '85440']
+municipios_filtrados = ee.FeatureCollection('users/geoia/MapasBase/ColMuni').filter(
+    ee.Filter.inList('MPIO_CCDGO', codigos_municipios)
+)
+```
 
 ## Change Detection Methodology
 
@@ -142,18 +148,20 @@ ls -lh data/  # All outputs stored here
 ## Modifying Analysis Parameters
 
 ### Changing Date Ranges
+**Current analysis period: Second semester 2025**
+
 Edit in notebook 01:
 ```python
-fecha_inicio = '2023-01-01'
-fecha_fin = '2024-12-31'
+fecha_inicio = '2025-01-01'
+fecha_fin = '2025-09-30'
 ```
 
 Then in notebook 03, define reference and target periods:
 ```python
-reference_start = '2023-01-01'
-reference_end = '2023-06-30'
-target_start = '2024-01-01'
-target_end = '2024-06-30'
+reference_start = '2025-01-01'  # First semester 2025 (reference)
+reference_end = '2025-06-30'
+target_start = '2025-07-01'     # Second semester 2025 (analysis)
+target_end = '2025-09-30'
 ```
 
 ### Adjusting Change Detection Thresholds
@@ -177,29 +185,27 @@ The Orinoquía region has:
 - **VV decrease + VH decrease**: Harvest, senescence, soil preparation
 - **High temporal variability**: Crop rotation, active management
 
-## Geometry Conversion Utilities
+## Working with Earth Engine FeatureCollections
 
-When working with GeoPandas → Earth Engine conversions, use these patterns:
+The project uses Earth Engine FeatureCollections directly - no GeoPandas conversion needed:
 
 ```python
-# Single geometry union
-def gdf_to_ee_geometry(gdf):
-    geom_union = gdf.geometry.unary_union
-    if geom_union.geom_type == 'Polygon':
-        coords = [list(geom_union.exterior.coords)]
-        return ee.Geometry.Polygon(coords)
-    elif geom_union.geom_type == 'MultiPolygon':
-        coords = [list(poly.exterior.coords) for poly in geom_union.geoms]
-        return ee.Geometry.MultiPolygon(coords)
+# Load and filter municipalities
+municipios_col = ee.FeatureCollection('users/geoia/MapasBase/ColMuni')
+municipios_filtrados = municipios_col.filter(
+    ee.Filter.inList('MPIO_CCDGO', codigos_municipios)
+)
 
-# FeatureCollection with properties
-def gdf_to_ee_fc(gdf):
-    features = []
-    for idx, row in gdf.iterrows():
-        geom = row.geometry
-        # Handle Polygon/MultiPolygon...
-        features.append(ee.Feature(ee_geom, properties_dict))
-    return ee.FeatureCollection(features)
+# Create unified AOI
+aoi = municipios_filtrados.geometry()
+
+# Extract statistics by municipality
+features_list = municipios_filtrados.toList(municipios_filtrados.size())
+for i in range(n_municipios):
+    feature = ee.Feature(features_list.get(i))
+    geom = feature.geometry()
+    props = feature.toDictionary().getInfo()
+    # ... process statistics
 ```
 
 ## References Format
@@ -214,14 +220,14 @@ All references follow IEEE citation style. Key papers:
 ### "Earth Engine not initialized"
 Run `ee.Authenticate()` then `ee.Initialize()` in the first cell.
 
-### "File not found: DANE_BASE_2023.gpkg"
-Update the hardcoded path in notebook 01 to point to your local DANE municipality layer.
+### "Asset not found: users/geoia/MapasBase/ColMuni"
+Ensure you have access to this Earth Engine asset or update the `ee_asset` parameter to point to your own municipality FeatureCollection.
 
 ### "No images found for orbit"
 Adjust date range or check Sentinel-1 coverage for your AOI. The code automatically selects the orbit with more images.
 
-### "municipios_seleccionados.gpkg not found" in notebook 02+
-Execute notebook 01 first to generate required intermediate files.
+### "parametros.json not found" in notebook 02+
+Execute notebook 01 first to generate the parameters file with municipality codes and date ranges.
 
 ### Memory errors during statistics extraction
 Reduce `maxPixels` parameter in `reduceRegion()` calls or process municipalities individually in a loop.
