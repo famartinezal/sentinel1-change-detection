@@ -50,6 +50,19 @@ All previous files → Notebook 04 → Final visualizations & reports
 ### In-Memory vs Persisted Collections
 **Important**: Sentinel-1 image collections are NOT exported to disk. They are recreated from scratch in notebooks 02, 03, and 04 using identical filtering logic. The processing pipeline functions (`process_sentinel1_collection`, `to_dB`, `apply_speckle_filter`) must be replicated across notebooks that need the collection.
 
+### Municipal Boundary Processing
+**Critical**: All statistics and analysis are performed strictly WITHIN individual municipality polygons:
+
+- `reduceRegion(geometry=geom)` processes ONLY pixels inside the municipality polygon
+- Areas between municipalities or outside boundaries are excluded
+- Each municipality is processed independently using its exact geometry
+- Visualization layers use `.updateMask()` to show only municipal areas
+
+This ensures:
+- Statistics reflect only what occurs within municipal boundaries
+- Calculated areas match exactly the municipality polygon
+- No data contamination from adjacent areas
+
 ## Municipality Selection
 
 The project analyzes exactly 9 municipalities using MPIO_CCDGO codes from Earth Engine:
